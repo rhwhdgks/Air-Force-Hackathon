@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ko" class="h-full">
+<head>
+  <meta charset="utf-8" />
+  <title>강남 현황 지도</title>
+
+  <!-- Tailwind / Kakao SDK -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class'};</script>
+  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=e8766bd88588ae6eb6f111b400b5c205&libraries=clusterer,services,drawing&autoload=false"></script>
+  <style>html,body,#map{margin:0;padding:0;width:100%;height:100%}</style>
+</head>
+<body class="h-full flex flex-col bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-gray-900 dark:to-gray-800 text-gray-800 dark:text-gray-100">
+  <!-- ▽ Global nav ▽ -->
+  <nav class="h-10 shrink-0 flex items-center gap-4 px-4 bg-gray-800 text-white dark:bg-gray-900 z-20">
+    <a href="/" class="font-semibold hover:underline">쓰레기통 배치 시뮬레이터</a>
+    <a href="/gangnam" aria-current="page" class="font-semibold hover:underline">강남구 현황 지도</a>
+  </nav>
+
+  <!-- ▽ Layout ▽ -->
+  <div class="flex flex-1">
+    <aside class="w-72 p-6 bg-white/80 dark:bg-gray-900/60 rounded-2xl shadow-xl flex flex-col gap-8 overflow-auto">
+  <!-- ① 데이터 레이어 -->
+  <div class="space-y-4">
+    <h3 class="text-xl font-bold">데이터 레이어</h3>
+    <div class="space-y-2">
+      <!-- 쓰레기통 토글 (검정) -->
+      <label class="flex items-center justify-between w-full">
+        <span class="flex items-center gap-2">
+          <!-- ✔ 아이콘을 검정으로 -->
+          <svg class="w-5 h-5 text-black" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M13 7H7v6h6V7z"/>
+          </svg>
+          쓰레기통 (<span id="count-bin" class="font-semibold">0</span>)
+        </span>
+        <div class="relative inline-block w-11 h-6 flex-shrink-0">
+          <input id="toggle-bin" type="checkbox" class="sr-only peer focus:outline-none" />
+          <div
+            class="absolute inset-0 bg-gray-200 rounded-full
+                   peer-checked:bg-black transition-colors">
+          </div>
+          <div
+            class="absolute top-1 left-1 bg-white w-4 h-4 rounded-full
+                   transition-transform peer-checked:translate-x-5">
+          </div>
+        </div>
+      </label>
+
+      <!-- 단속건수 토글 (파랑) -->
+      <label class="flex items-center justify-between w-full">
+        <span class="flex items-center gap-2">
+          <!-- ⚠️ 아이콘을 파랑으로 -->
+          <svg class="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M13 7H7v6h6V7z"/>
+          </svg>
+          단속건수 (<span id="count-enf" class="font-semibold">0</span>)
+        </span>
+        <div class="relative inline-block w-11 h-6 flex-shrink-0">
+          <input id="toggle-enf" type="checkbox" class="sr-only peer focus:outline-none" />
+          <div
+            class="absolute inset-0 bg-gray-200 rounded-full
+                   peer-checked:bg-blue-500 transition-colors">
+          </div>
+          <div
+            class="absolute top-1 left-1 bg-white w-4 h-4 rounded-full
+                   transition-transform peer-checked:translate-x-5">
+          </div>
+        </div>
+      </label>
+    </div>
+  </div>
+
+  <!-- ② 시뮬레이션 결과 -->
+  <div class="space-y-4">
+    <h3 class="text-xl font-bold">시뮬레이션 결과</h3>
+    <!-- 시뮬 지점 토글 (빨강) -->
+    <label class="flex items-center justify-between w-full">
+      <span class="flex items-center gap-2">
+        <!-- ■ 아이콘을 빨강으로 -->
+        <svg class="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M13 7H7v6h6V7z"/>
+        </svg>
+        시뮬 지점 표시
+      </span>
+      <div class="relative inline-block w-11 h-6 flex-shrink-0">
+        <input id="toggle-sim" type="checkbox" class="sr-only peer focus:outline-none" checked />
+        <div
+          class="absolute inset-0 bg-gray-200 rounded-full
+                 peer-checked:bg-red-500 transition-colors">
+        </div>
+        <div
+          class="absolute top-1 left-1 bg-white w-4 h-4 rounded-full
+                 transition-transform peer-checked:translate-x-5">
+        </div>
+      </div>
+    </label>
+
+    <!-- SSE 버튼 -->
+    <button id="btnConnectSSE"
+      class="w-full py-3 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-500 text-white font-semibold shadow-lg
+             hover:from-sky-600 hover:to-indigo-600 transition">
+      SSE 연결
+    </button>
+
+    <!-- ③ KPI 카드 그리드 -->
+    <div class="grid grid-cols-2 gap-4 pt-4">
+      <div class="p-4 bg-white/90 dark:bg-gray-800/70 rounded-lg flex flex-col items-center shadow">
+        <span class="text-sm text-gray-500">설치 개수</span>
+        <span id="statPlacement" class="mt-1 text-2xl font-bold">0</span>
+      </div>
+      <div class="p-4 bg-white/90 dark:bg-gray-800/70 rounded-lg flex flex-col items-center shadow">
+        <span class="text-sm text-gray-500">감소율(%)</span>
+        <span id="statReduction" class="mt-1 text-2xl font-bold">0.0</span>
+      </div>
+    </div>
+  </div>
+</aside>
+
+
+    <div id="map" class="flex-1"></div>
+  </div>
+
+<script>
+kakao.maps.load(()=>{
+  /* ─── Map init ─── */
+  const map=new kakao.maps.Map(document.getElementById('map'),{center:new kakao.maps.LatLng(37.4979,127.0276),level:5});
+
+  /* ─── Cluster style helpers ─── */
+  const thresholds=[1,4,11,31,51,100,300,600];
+  const sty=(w,bg,b)=>({width:w+'px',height:w+'px',background:bg,borderRadius:'50%',border:`${b}px solid #000`,color:'#fff',fontSize:'11px',fontWeight:'700',lineHeight:w+'px',textAlign:'center'});
+  const stylesBin=[sty(18,'#31c48d',1),sty(18,'#84cc16',1),sty(26,'#fbbf24',2),sty(32,'#fb923c',2),sty(38,'#f43f5e',2),sty(42,'#ef4444',2),sty(48,'#ec4899',2),sty(54,'#a21caf',2),sty(60,'#c026d3',2)];
+  const stylesEnf=[sty(24,'#0ea5e9',1),sty(24,'#22d3ee',1),sty(34,'#38bdf8',2),sty(42,'#0ea5e9',2),sty(48,'#0284c7',2),sty(54,'#0369a1',2),sty(62,'#075985',2),sty(70,'#0c4a6e',2),sty(78,'#083344',2)];
+
+  const clusterBin=new kakao.maps.MarkerClusterer({map,averageCenter:true,minLevel:5,calculator:thresholds,styles:stylesBin});
+  const clusterEnf=new kakao.maps.MarkerClusterer({map,averageCenter:true,minLevel:5,calculator:thresholds,styles:stylesEnf});
+  const clusterSim=new kakao.maps.MarkerClusterer({map,averageCenter:true,minLevel:5,calculator:thresholds,styles:stylesBin});
+
+  /* ─── Static markers ─── */
+  const markersByType={bin:[],enforcement:[]};
+  fetch('/api/markers').then(r=>r.json()).then(gj=>{
+    gj.features.forEach(f=>{const[lng,lat]=f.geometry.coordinates,tp=f.properties.type;const icon=`/img/${tp==='bin'?'bin':'enforce'}.png`;markersByType[tp].push(new kakao.maps.Marker({position:new kakao.maps.LatLng(lat,lng),image:new kakao.maps.MarkerImage(icon,new kakao.maps.Size(12,12))}));});
+    document.getElementById('count-bin').textContent=markersByType.bin.length;
+    document.getElementById('count-enf').textContent=markersByType.enforcement.length;
+    sync('bin'); sync('enforcement');
+  });
+  const toggle=(tp,on)=>{if(tp==='bin') on?clusterBin.addMarkers(markersByType.bin):clusterBin.removeMarkers(markersByType.bin); else on?clusterEnf.addMarkers(markersByType.enforcement):clusterEnf.removeMarkers(markersByType.enforcement);};
+  const sync=tp=>toggle(tp,document.getElementById(tp==='bin'?'toggle-bin':'toggle-enf').checked);
+  document.getElementById('toggle-bin').addEventListener('change',e=>toggle('bin',e.target.checked));
+  document.getElementById('toggle-enf').addEventListener('change',e=>toggle('enforcement',e.target.checked));
+
+  /* ─── Sim markers (reuse) ─── */
+  const simIcon=new kakao.maps.MarkerImage('/img/sim_point.png',new kakao.maps.Size(10,10),{offset:new kakao.maps.Point(5,5)});
+  let simMarkers=[], simVisible=true;
+  const drawSim=pts=>{
+    const n=pts.length;
+    for(let i=simMarkers.length;i<n;i++) simMarkers.push(new kakao.maps.Marker({position:new kakao.maps.LatLng(0,0),image:simIcon}));
+    for(let i=0;i<n;i++) simMarkers[i].setPosition(new kakao.maps.LatLng(pts[i].lat,pts[i].lng));
+    for(let i=n;i<simMarkers.length;i++) simMarkers[i].setMap(null);
+    clusterSim.clear(); if(simVisible) clusterSim.addMarkers(simMarkers.slice(0,n));
+  };
+  document.getElementById('toggle-sim').addEventListener('change',e=>{simVisible=e.target.checked;simVisible?clusterSim.addMarkers(simMarkers):clusterSim.removeMarkers(simMarkers);});
+
+  /* ─── KPI update ─── */
+  const updateStats=d=>{document.getElementById('statPlacement').textContent=d.installedBins;document.getElementById('statReduction').textContent=d.reductionRate.toFixed(1);};
+
+  /* ─── Initial overlay if exists ─── */
+  fetch('/api/latestOverlay').then(r=>r.status===204?null:r.json()).then(d=>{if(d){drawSim(d.points);updateStats(d);}});
+
+  /* ─── SSE connection ─── */
+  let es=null; const btn=document.getElementById('btnConnectSSE');
+  function connectSSE(){
+    if(es) es.close();
+    es = new EventSource('/api/overlayStream');
+
+    es.addEventListener('overlay', e => {
+      const d = JSON.parse(e.data);
+      drawSim(d.points);
+      updateStats(d);
+      if (d.coverageReady && document.getElementById('toggle-cov').checked){
+        drawCov();
+      }
+    });
+
+    es.onerror = err => {
+      console.warn('SSE error', err, ' – retrying in 3 s');
+      setTimeout(connectSSE, 3000);
+    };
+  }
+
+  btn.addEventListener('click', () => {
+    connectSSE();
+    btn.textContent = '연결됨';
+    btn.disabled = true;
+    btn.classList.add('opacity-50', 'cursor-not-allowed');
+  });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ko" class="h-full">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>쓰레기통 배치 시뮬레이터</title>
+
+  <!-- TailwindCSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tailwind dark‑mode 전략 설정 -->
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+
+  <!-- Lottie 애니메이션 CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.10.2/lottie.min.js"></script>
+
+  <!-- Kakao Map SDK -->
+  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=e8766bd88588ae6eb6f111b400b5c205&libraries=services,drawing"></script>
+
+  <!-- 다크모드 토글 -->
+  <script>
+    if (localStorage.theme === 'dark' ||
+        (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    }
+    function toggleTheme(){
+      const c=document.documentElement.classList;
+      if(c.contains('dark')){c.remove('dark');localStorage.theme='light';}
+      else{c.add('dark');localStorage.theme='dark';}
+    }
+  </script>
+
+  <style>
+    html,body,#map{margin:0;padding:0;width:100%;height:100%;}
+  </style>
+</head>
+<body class="h-full flex flex-col bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-gray-900 dark:to-gray-800 text-gray-800 dark:text-gray-100">
+  <!-- ▽ Global top navigation ▽ -->
+  <nav class="h-10 shrink-0 flex items-center gap-4 px-4 bg-gray-800 text-white dark:bg-gray-900 z-20">
+    <a href="/" class="font-semibold hover:underline">쓰레기통 배치 시뮬레이터</a>
+    <a href="/gangnam" class="font-semibold hover:underline">강남 현황 파악 지도</a>
+  </nav>
+
+  <!-- ▽ Main layout ▽ -->
+  <div class="flex flex-1">
+    <!-- ▽ Control panel ▽ -->
+    <aside class="w-72 p-6 backdrop-blur-md bg-white/70 dark:bg-gray-900/60 shadow-2xl flex flex-col gap-8 overflow-auto">
+      <!-- Header -->
+      <header class="flex items-center justify-between">
+        <h1 class="text-xl font-bold flex items-center gap-1">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-4m6 4v-4m-4-4V9a3 3 0 016 0v2a3 3 0 01-6 0z"/></svg>
+          배치 설정
+        </h1>
+        <button onclick="toggleTheme()" title="다크모드 전환" class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4.22 2.03a1 1 0 10-1.44 1.38l.7.71a1 1 0 101.45-1.38l-.71-.71zM18 9a1 1 0 100 2h1a1 1 0 100-2h-1zm-2.03 4.22a1 1 0 00-1.38 1.44l.71.7a1 1 0 001.38-1.44l-.71-.7zM10 16a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zm-4.22-2.03a1 1 0 10-1.44 1.38l.71.71a1 1 0 001.44-1.38l-.71-.71zM2 9a1 1 0 000 2H1a1 1 0 000-2h1zm2.03-4.22a1 1 0 001.38-1.44l-.71-.7A1 1 0 103.32 4.1l.71.7z"/>
+          </svg>
+        </button>
+      </header>
+
+      <!-- Controls -->
+      <section class="space-y-6 text-sm">
+        <!-- Count -->
+        <div class="space-y-2">
+          <label class="font-semibold flex justify-between">쓰레기통 개수: <span id="cntVal" class="font-mono"></span></label>
+          <input id="cntSlider" type="range" min="1" max="1500" value="100" class="w-full accent-emerald-600"/>
+        </div>
+
+        <!-- Radius -->
+        <div class="flex items-center justify-between gap-3">
+          <label class="font-semibold">반경 (m)</label>
+          <input id="rInput" type="number" value="50" class="w-24 text-right border rounded px-1 py-0.5 bg-white/80 dark:bg-gray-800/80"/>
+        </div>
+
+        <!-- Max per location -->
+        <div class="flex items-center justify-between gap-3">
+          <label class="font-semibold">MAX / 위치</label>
+          <input id="maxInput" type="number" value="1" class="w-24 text-right border rounded px-1 py-0.5 bg-white/80 dark:bg-gray-800/80"/>
+        </div>
+
+        <hr class="border-emerald-200 dark:border-gray-700">
+
+        <!-- Stats -->
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <span>전체 쓰레기양</span><span id="totalWaste" class="text-right font-medium">0</span>
+          <span>총 감소량</span><span id="totalReduction" class="text-right font-medium">0</span>
+        </div>
+
+        <!-- Progress + Lottie -->
+        <div class="mt-2 space-y-2">
+          <div class="flex items-center gap-3">
+            <div id="lottieProg" class="w-8 h-8"></div>
+            <div class="flex-1">
+              <div class="w-full h-2 bg-gray-200 rounded-full dark:bg-gray-700">
+                <div id="progFill" class="h-full bg-emerald-600 rounded-full transition-all duration-300" style="width:0%;"></div>
+              </div>
+            </div>
+            <span id="progPct" class="text-xs w-10 text-right">0%</span>
+          </div>
+
+          <!-- KPI Cards -->
+          <div id="kpiWrap" class="grid grid-cols-2 gap-3 text-center text-xs">
+            <div class="bg-white/80 dark:bg-gray-800/70 backdrop-blur rounded-xl p-2 shadow">
+              <div class="font-semibold">감소율(%)</div>
+              <div id="kpiRed" class="text-lg font-bold">0</div>
+            </div>
+            <div class="bg-white/80 dark:bg-gray-800/70 backdrop-blur rounded-xl p-2 shadow">
+              <div class="font-semibold">설치 지점</div>
+              <div id="kpiCnt" class="text-lg font-bold">0</div>
+            </div>
+          </div>
+
+          <!-- Run button -->
+          <button id="runBtn" class="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+            <svg id="runIcon" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M6 4l10 6-10 6V4z"/></svg>
+            실행
+          </button>
+        </div>
+      </section>
+    </aside>
+
+    <!-- ▽ Kakao Map ▽ -->
+    <div id="map" class="flex-1"></div>
+  </div>
+
+  <script>
+  /* ─ 지도 초기화 / 데이터 로드 ───────────────────────────── */
+const map = new kakao.maps.Map(document.getElementById('map'), {
+  center: new kakao.maps.LatLng(37.5172, 127.0473), level: 5
+});
+/* ── 버블 HTML 템플릿 ───────────────────────────────── */
+function bubbleHTML(cnt){
+  let bg, size;
+  if      (cnt === 1)           { bg='bg-emerald-400/50'; size=20; }
+  else if (cnt <= 3)            { bg='bg-lime-400/60';    size=20; }
+  else if (cnt <= 10)           { bg='bg-amber-400/60';   size=38; }
+  else if (cnt <= 30)           { bg='bg-orange-500/60';  size=46; }
+  else if (cnt <= 50)           { bg='bg-rose-500/70';    size=54; }
+  else if (cnt <= 99)           { bg='bg-red-500/70';     size=60; }
+  else if (cnt <= 299)          { bg='bg-pink-600/70';     size=68; }
+  else if (cnt <= 599)          { bg='bg-purple-700/70';     size=76; }
+  else                          { bg='bg-fuchsia-800/80';     size=84; }
+
+  const label = cnt > 999 ? '999+' : cnt;
+  return `<div style="width:${size}px;height:${size}px" class="rounded-full ${bg} backdrop-blur flex items-center justify-center text-gray-900 text-xs font-semibold select-none">${label}</div>`;
+}
+
+/* ── 줌 레벨별 셀 크기(°) & 렌더 함수 ───────────────── */
+const cellSizeByLevel = { 5: 0.01, 6: 0.015, 7: 0.03 };
+let overlays = [];
+function clearOverlays(){ overlays.forEach(o => o.setMap(null)); overlays = []; }
+
+function drawBubbles(points){           // [{lat,lng,cnt}]
+  clearOverlays();
+  const lv   = map.getLevel();
+  const cell = cellSizeByLevel[lv] || 0;          // lv < 5 → 0 = 개별
+
+  /* ① 버킷 만들기 */
+  const buckets = {};
+  points.forEach(p=>{
+    const key = cell ? `${Math.floor(p.lat/cell)}_${Math.floor(p.lng/cell)}` : `${p.lat}_${p.lng}`;
+    (buckets[key] ||= []).push(p);
+  });
+
+  /* ② 버킷마다 버블 오버레이 */
+  Object.values(buckets).forEach(arr=>{
+    const cnt = arr.reduce((s,p)=>s+p.cnt,0);           // 합산 or 개수
+    const lat = arr.reduce((s,p)=>s+p.lat,0) / arr.length;
+    const lng = arr.reduce((s,p)=>s+p.lng,0) / arr.length;
+    const ov  = new kakao.maps.CustomOverlay({
+      position: new kakao.maps.LatLng(lat,lng),
+      content : bubbleHTML(cnt),
+      xAnchor : .5, yAnchor: .5
+    });
+    ov.setMap(map);
+    overlays.push(ov);
+  });
+}
+
+
+// UI refs
+const cntSlider = document.getElementById('cntSlider');
+const cntVal    = document.getElementById('cntVal');
+const rInput    = document.getElementById('rInput');
+const maxInput  = document.getElementById('maxInput');
+const totalWaste= document.getElementById('totalWaste');
+const totalRed  = document.getElementById('totalReduction');
+const progFill  = document.getElementById('progFill');
+const progPct   = document.getElementById('progPct');
+const runBtn    = document.getElementById('runBtn');
+const runIcon   = document.getElementById('runIcon');
+
+cntSlider.addEventListener('input', () => cntVal.textContent = cntSlider.value);
+cntVal.textContent = cntSlider.value;
+
+let sidewalkData = [];
+let totalWasteNum = 0;
+fetch('/map/GangNam_garbage_pred_10m.json')
+  .then(r => r.json())
+  .then(d => {
+    sidewalkData = d;
+    totalWasteNum = d.reduce((s,p)=>s+p.waste_estimate,0);
+    totalWaste.textContent = Math.floor(totalWasteNum);
+  });
+
+/* ─ Lottie 진행 스피너 초기화 ─ */
+const lottieAnim = lottie.loadAnimation({
+  container: document.getElementById('lottieProg'),
+  renderer: 'svg', loop: true, autoplay: false,
+  path: 'https://assets2.lottiefiles.com/packages/lf20_usmfx6bp.json'
+});
+
+function setProgress(v){
+  progFill.style.width = v + '%';
+  progPct.textContent  = v + '%';
+  if(v===0){ lottieAnim.goToAndStop(0,true); }
+  else if(v<100){ if(lottieAnim.isPaused) lottieAnim.play(); }
+  else { lottieAnim.pause(); }
+  let color;
+
+  if(v<70)      color='bg-emerald-600';   // Greedy
+  else if(v<90) color='bg-sky-500';       // 1‑swap
+  else if(v<100)color='bg-amber-500';     // 2‑swap
+  else          color='bg-lime-600';      // Done
+  progFill.classList.remove('bg-emerald-600','bg-sky-500','bg-amber-500','bg-lime-600');
+  progFill.classList.add(color);
+}
+
+/* ─ 실행 (SSE) ───────────────────────────────────────────── */
+runBtn.addEventListener('click',()=>{
+  if(runBtn.disabled) return;
+  runBtn.disabled = true;
+  runIcon.classList.add('animate-spin');
+
+  overlays.forEach(o=>o.setMap(null));
+  overlays = [];
+  setProgress(0);
+  totalRed.textContent = '0';
+
+  const N = cntSlider.value,
+        R = rInput.value,
+        MAX = maxInput.value;
+
+  const src = new EventSource(`/api/runGreedyStream?n=${N}&r=${R}&max=${MAX}`);
+
+  src.addEventListener('progress',e=>{
+    setProgress(parseInt(e.data,10));
+  });
+
+  src.addEventListener('result',e=>{
+    setProgress(100);
+    const data = JSON.parse(e.data);
+    totalRed.textContent = data.totalReduction;
+
+    // KPI 카드 업데이트
+    const pct = (data.totalReduction / totalWasteNum) * 100;
+    document.getElementById('kpiRed').textContent = pct.toFixed(1);
+    document.getElementById('kpiCnt').textContent = data.selected.length;
+    
+
+    // 마커 렌더링
+    /* 버블 & 클러스터 렌더 */
+    const points = data.selected.map(idx => ({
+    lat: sidewalkData[idx].lat,
+    lng: sidewalkData[idx].lng,
+    cnt: data.bins[idx]           // 지점별 설치 수
+    }));
+    drawBubbles(points);                          // 최초 1회
+    kakao.maps.event.addListener(map, 'zoom_changed',
+    () => drawBubbles(points));                 // 확대/축소 시 재계산
+
+
+    src.close();
+    runBtn.disabled=false;
+    runIcon.classList.remove('animate-spin');
+  });
+
+  src.onerror=err=>{
+    console.error(err);
+    src.close();
+    setProgress(0);
+    runBtn.disabled=false;
+    runIcon.classList.remove('animate-spin');
+  };
+});
+</script>
+</body>
+</html>

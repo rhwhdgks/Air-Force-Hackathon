@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ko" class="h-full">
+<head>
+  <meta charset="utf-8" />
+  <title>강남 현황 지도</title>
+
+  <!-- TailwindCSS & Kakao SDK -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class'};</script>
+  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=e8766bd88588ae6eb6f111b400b5c205&libraries=clusterer,services,drawing&autoload=false"></script>
+  <style>html,body,#map{margin:0;padding:0;width:100%;height:100}</style>
+</head>
+<body class="h-full flex flex-col bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-gray-900 dark:to-gray-800 text-gray-800 dark:text-gray-100">
+
+  <!-- Global nav -->
+  <nav class="h-10 flex items-center gap-4 px-4 bg-gray-800 text-white dark:bg-gray-900">
+    <a href="/" class="font-semibold hover:underline">쓰레기통 배치 시뮬레이터</a>
+    <a href="/gangnam" class="font-semibold hover:underline">강남구 현황 지도</a>
+  </nav>
+
+  <div class="flex flex-1">
+    <!-- Sidebar -->
+    <aside class="w-72 p-6 bg-white/80 dark:bg-gray-900/60 rounded-2xl shadow-xl flex flex-col gap-8 overflow-auto">
+      <!-- Data Layers -->
+      <div class="space-y-4">
+        <h3 class="text-xl font-bold">데이터 레이어</h3>
+        <div class="space-y-2">
+          <!-- 쓰레기통 -->
+          <label class="flex items-center justify-between w-full">
+            <span class="flex items-center gap-2">
+              <svg class="w-5 h-5 text-purple-500" fill="currentColor" viewBox="0 0 20 20"><path d="M9 12l2 2 4-4-1.5-1.5L11 10l-1.5-1.5L8 10z"/></svg>
+              쓰레기통 (<span id="count-bin" class="font-semibold">0</span>)
+            </span>
+            <div class="relative inline-block w-11 h-6 flex-shrink-0">
+              <input id="toggle-bin" type="checkbox" class="sr-only peer focus:outline-none" />
+              <div class="absolute inset-0 bg-gray-200 rounded-full peer-checked:bg-purple-500 transition-colors"></div>
+              <div class="absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-5"></div>
+            </div>
+          </label>
+          <!-- 단속건수 -->
+          <label class="flex items-center justify-between w-full">
+            <span class="flex items-center gap-2">
+              <svg class="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20"><path d="M13 7H7v6h6V7z"/></svg>
+              단속건수 (<span id="count-enforcement" class="font-semibold">0</span>)
+            </span>
+            <div class="relative inline-block w-11 h-6 flex-shrink-0">
+              <input id="toggle-enforcement" type="checkbox" class="sr-only peer focus:outline-none" />
+              <div class="absolute inset-0 bg-gray-200 rounded-full peer-checked:bg-blue-500 transition-colors"></div>
+              <div class="absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-5"></div>
+            </div>
+          </label>
+          <!-- CCTV -->
+          <label class="flex items-center justify-between w-full">
+            <span class="flex items-center gap-2">
+              <svg class="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20"><path d="M13 7H7v6h6V7z"/></svg>
+              CCTV (<span id="count-cctv" class="font-semibold">0</span>)
+            </span>
+            <div class="relative inline-block w-11 h-6 flex-shrink-0">
+              <input id="toggle-cctv" type="checkbox" class="sr-only peer focus:outline-none" />
+              <div class="absolute inset-0 bg-gray-200 rounded-full peer-checked:bg-green-600 transition-colors"></div>
+              <div class="absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-5"></div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Simulation Results -->
+      <div class="space-y-4">
+        <h3 class="text-xl font-bold">시뮬레이션 결과</h3>
+        <label class="flex items-center justify-between w-full">
+          <span class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path d="M13 7H7v6h6V7z"/></svg>
+            시뮬 지점 표시
+          </span>
+          <div class="relative inline-block w-11 h-6 flex-shrink-0">
+            <input id="toggle-sim" type="checkbox" class="sr-only peer focus:outline-none" checked />
+            <div class="absolute inset-0 bg-gray-200 rounded-full peer-checked:bg-red-500 transition-colors"></div>
+            <div class="absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-5"></div>
+          </div>
+        </label>
+        <button id="btnConnectSSE" class="w-full py-3 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-500 text-white font-semibold shadow-lg hover:from-sky-600 hover:to-indigo-600 transition">
+          SSE 연결
+        </button>
+        <div class="grid grid-cols-2 gap-4 pt-4">
+          <div class="p-4 bg-white/90 dark:bg-gray-800/70 rounded-lg flex flex-col items-center shadow">
+            <span class="text-sm text-gray-500">설치 개수</span>
+            <span id="statPlacement" class="mt-1 text-2xl font-bold">0</span>
+          </div>
+          <div class="p-4 bg-white/90 dark:bg-gray-800/70 rounded-lg flex flex-col items-center shadow">
+            <span class="text-sm text-gray-500">감소율(%)</span>
+            <span id="statReduction" class="mt-1 text-2xl font-bold">0.0</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Map Container -->
+    <div id="map" class="flex-1"></div>
+  </div>
+
+  <!-- CCTV Video Modal -->
+  <div id="cctvModal" class="fixed inset-0 hidden items-center justify-center bg-black/75 z-50">
+    <video id="cctvVideo" controls class="max-w-lg max-h-full bg-black"></video>
+    <button id="closeCctvBtn" class="absolute top-4 right-4 text-white text-xl">✖</button>
+  </div>
+
+  <script>
+    kakao.maps.load(() => {
+      // helper for cluster style
+      function sty(w, bg, b) {
+        return {
+          width: w + 'px',
+          height: w + 'px',
+          background: bg,
+          borderRadius: '50%',
+          border: b + 'px solid #000',
+          color: '#fff',
+          fontSize: '11px',
+          fontWeight: '700',
+          lineHeight: w + 'px',
+          textAlign: 'center'
+        };
+      }
+      const map = new kakao.maps.Map(document.getElementById('map'), { center: new kakao.maps.LatLng(37.4979, 127.0276), level: 5 });
+
+      // Clusterers
+      const thresholds = [1,4,11,31,51,100,300,600];
+      const stylesBin = [sty(18, '#ede9fe', 1), sty(18, '#ddd6fe', 1), sty(26, '#c4b5fd', 2), sty(32, '#a78bfa', 2), sty(38, '#8b5cf6', 2), sty(42, '#7c3aed', 2), sty(48, '#6d28d9', 2), sty(54, '#5b21b6', 2), sty(60, '#4c1d95', 2)];
+      const stylesEnf = [sty(24,'#0ea5e9',1),sty(24,'#22d3ee',1),sty(34,'#38bdf8',2),sty(42,'#0ea5e9',2),sty(48,'#0284c7',2),sty(54,'#0369a1',2),sty(62,'#075985',2),sty(70,'#0c4a6e',2),sty(78,'#083344',2)];
+      const stylesCctv = [sty(18, '#22c55e', 1),sty(18, '#4ade80', 1),sty(24, '#86efac', 2),sty(30, '#bbf7d0', 2),sty(36, '#bef264', 2),sty(42, '#a3e635', 2),sty(48, '#84cc16', 2),sty(54, '#65a30d', 2),sty(60, '#4d7c0f', 2)];
+      const stylesSim = [sty(18,'#31c48d',1),sty(18,'#84cc16',1),sty(26,'#fbbf24',2),sty(32,'#fb923c',2),sty(38,'#f43f5e',2),sty(42,'#ef4444',2),sty(48,'#ec4899',2),sty(54,'#a21caf',2),sty(60,'#c026d3',2)];
+      const clusterBin  = new kakao.maps.MarkerClusterer({map,averageCenter:true,minLevel:5,calculator:thresholds,styles:stylesBin});
+      const clusterEnf  = new kakao.maps.MarkerClusterer({map,averageCenter:true,minLevel:5,calculator:thresholds,styles:stylesEnf});
+      const clusterCctv = new kakao.maps.MarkerClusterer({map,averageCenter:true,minLevel:5,calculator:thresholds,styles:stylesCctv});
+      const clusterSim  = new kakao.maps.MarkerClusterer({map,averageCenter:true,minLevel:5,calculator:thresholds,styles:stylesSim});
+
+      // Marker storage
+      const markersByType = { bin: [], enforcement: [], cctv: [] };
+
+      // Load bin/enforcement
+      fetch('/api/markers').then(r => r.json()).then(gj => {
+        gj.features.forEach(f => {
+          const [lng, lat] = f.geometry.coordinates;
+          const tp = f.properties.type;
+          const icon = `/img/${tp==='bin'?'bin':'enforce'}.png`;
+          markersByType[tp].push(new kakao.maps.Marker({ position: new kakao.maps.LatLng(lat, lng), image: new kakao.maps.MarkerImage(icon, new kakao.maps.Size(12,12)) }));
+        });
+        document.getElementById('count-bin').textContent = markersByType.bin.length;
+        document.getElementById('count-enforcement').textContent = markersByType.enforcement.length;
+        ['bin','enforcement'].forEach(tp => toggle(tp, document.getElementById(`toggle-${tp}`).checked));
+      });
+
+      // Load CCTV
+      fetch('/api/cctvs').then(r => r.json()).then(arr => {
+        arr.forEach((p, idx) => {
+          const mk = new kakao.maps.Marker({ position: new kakao.maps.LatLng(p.lat, p.lng), image: new kakao.maps.MarkerImage('/img/cctv.png', new kakao.maps.Size(28,28)), title: 'CCTV' });
+          mk.cctvId = idx + 1;
+          kakao.maps.event.addListener(mk, 'click', () => openCctvModal(`/video/${mk.cctvId}.mp4`));
+          markersByType.cctv.push(mk);
+        });
+        document.getElementById('count-cctv').textContent = markersByType.cctv.length;
+        toggle('cctv', document.getElementById('toggle-cctv').checked);
+      });
+
+      // Toggle function
+      function toggle(tp, on) {
+        if (tp==='bin')         on?clusterBin.addMarkers(markersByType.bin)         :clusterBin.removeMarkers(markersByType.bin);
+        else if (tp==='enforcement') on?clusterEnf.addMarkers(markersByType.enforcement):clusterEnf.removeMarkers(markersByType.enforcement);
+        else if (tp==='cctv')        on?clusterCctv.addMarkers(markersByType.cctv)       :clusterCctv.removeMarkers(markersByType.cctv);
+      }
+
+      // Bind toggles
+      ['bin','enforcement','cctv'].forEach(tp => {
+        document.getElementById(`toggle-${tp}`).addEventListener('change', e => toggle(tp, e.target.checked));
+      });
+
+      // CCTV Modal control
+      function openCctvModal(src) {
+        const modal = document.getElementById('cctvModal');
+        const vid = document.getElementById('cctvVideo');
+        vid.src = src;
+        modal.classList.remove('hidden');
+        vid.play();
+      }
+      function closeCctvModal() {
+        const modal = document.getElementById('cctvModal');
+        const vid = document.getElementById('cctvVideo');
+        vid.pause(); vid.src='';
+        modal.classList.add('hidden');
+      }
+      document.getElementById('closeCctvBtn').addEventListener('click', closeCctvModal);
+
+            // Simulation markers & SSE
+      let simMarkers = [];
+      let simVisible = document.getElementById('toggle-sim').checked;
+      document.getElementById('toggle-sim').addEventListener('change', e => {
+        simVisible = e.target.checked;
+        if (simVisible) clusterSim.addMarkers(simMarkers);
+        else clusterSim.removeMarkers(simMarkers);
+      });
+
+      function drawSim(pts) {
+        // clear existing markers
+        simMarkers.forEach(m => m.setMap(null)); simMarkers = [];
+        pts.forEach(p => {
+          const m = new kakao.maps.Marker({
+            position: new kakao.maps.LatLng(p.lat, p.lng),
+            image: new kakao.maps.MarkerImage('/img/sim.png', new kakao.maps.Size(10,10))
+          });
+          simMarkers.push(m);
+        });
+        if (simVisible) clusterSim.addMarkers(simMarkers);
+      }
+
+      function updateStats(d) {
+        document.getElementById('statPlacement').textContent = d.installedBins;
+        document.getElementById('statReduction').textContent = d.reductionRate.toFixed(1);
+      }
+
+      const btn = document.getElementById('btnConnectSSE');
+      let es;
+      btn.addEventListener('click', () => {
+        if (es) es.close();
+        es = new EventSource('/api/overlayStream');
+        es.addEventListener('overlay', e => {
+          const d = JSON.parse(e.data);
+          drawSim(d.points);
+          updateStats(d);
+        });
+        btn.textContent = '연결됨';
+        btn.classList.add('opacity-50','cursor-not-allowed');
+      });
+    });
+  </script>
+</body>
+</html>
