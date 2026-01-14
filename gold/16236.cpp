@@ -33,21 +33,22 @@ int main(){
             if(space[i][j] == 9) {
                     sharkx = i;
                     sharky = j;
+                    space[i][j] = 0;
                 }
             }
     }
     int answer = 0;
+    int k = 0;
     while (true) {
-        int d = 100;
         int visited[20][20] = {0,};
         int dist[20][20] = {0,};
         dist[sharkx][sharky] = 0;
         vector <dinner> eat; 
         queue <pair<int, int>> move;
         move.push({sharkx, sharky});
+        visited[sharkx][sharky] = 1;
         while(!move.empty()){
             auto [x, y] = move.front(); move.pop();
-            visited[x][y] = 1;
             int dix[] = {0, -1, 1, 0};
             int diy[] = {1, 0, 0, -1};
             for (int i = 0; i < 4; i++) {
@@ -58,29 +59,35 @@ int main(){
                     if (space[x1][y1] == 0 || space[x1][y1] == sharksize) {
                         move.push({x1, y1});
                         dist[x1][y1] = dist[x][y] + 1;
+                        visited[x1][y1] = 1;
                     }
                     else if (space[x1][y1] < sharksize && space[x1][y1] != 0) {
                         dist[x1][y1] = dist[x][y]+1;
                         eat.push_back({dist[x1][y1], x1, y1});
                         move.push({x1, y1});
+                        visited[x1][y1] = 1;
                     }
                     else continue;
                 }
             }
-
+        
         }
-        if (!eat.empty()) break;
+        if (eat.empty()) break;
         else {
+            sort(eat.begin(), eat.end(), cmp);
             answer += eat[0].d;
-
-            space[sharkx][sharky] = 0;
             sharkx = eat[0].x;
             sharky = eat[0].y;
-            space[sharkx][sharky] = 9;
+            space[sharkx][sharky] = 0;
+            k++;
+            if (k == sharksize) {
+                sharksize++;
+                k = 0;
+            }
         }
 
     }
 
-    
+    cout << answer;
 
 }
